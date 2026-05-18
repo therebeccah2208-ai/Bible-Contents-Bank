@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bible Content Bank</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0f0c1d; font-family: Georgia, 'Times New Roman', serif; color: #e8d5a3; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+    ::-webkit-scrollbar-thumb { background: rgba(212,175,55,0.3); border-radius: 3px; }
+    input::placeholder { color: #5a4020; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .dot { display:inline-block; width:6px; height:6px; background:#d4af37; border-radius:50%; animation: pulse 1s infinite; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    const CHARACTERS = [
+      "Moses","David","Joseph","Elijah","Samson","Solomon","Abraham","Daniel",
+      "Gideon","Jonah","Job","Isaiah","Jeremiah","Joshua","Esther","Ruth",
+      "Mary Magdalene","Paul","Peter","John the Baptist","Lazarus","Nicodemus",
+      "Mary (Mother of Jesus)","Martha","Rahab","Deborah","Saul / King Saul",
+      "Jezebel","Judas Iscariot","Thomas","Barnabas","Stephen","Lydia",
+      "Zacchaeus","Goliath","Herod","Pilate","Eve","Adam",
+      "Cain","Noah","Jacob","Leah","Rachel","Miriam","Aaron","Caleb"
+    ];
+
+    const ICONS = { titles:"🎬", thumbnails:"🖼️", description:"📄", script:"📝" };
+    const LABELS = { titles:"Title & Hook Ideas", thumbnails:"Thumbnail Text Ideas", description:"YouTube Description & Tags", script:"Video Script" };
+
+    function getPrompt(section, character) {
+      const p = {
+        titles: `You are a YouTube content strategist for a faceless Bible storytelling channel. 
+Generate 6 compelling video title and hook ideas for a video about the Bible character: ${character}.
+Mix styles: dramatic storytelling, educational, devotional, and inspirational.
+Format each as:
+TITLE: [title]
+HOOK: [1-2 sentence opening hook for the video]
+---
+Make titles attention-grabbing, SEO-friendly, and suited for YouTube. Use power words. No generic titles.`,
+
+        thumbnails: `You are a YouTube thumbnail designer and copywriter for a faceless Bible channel.
+Create 5 thumbnail text concepts for a video about: ${character}.
+Each concept:
+MAIN TEXT: [bold 2-4 word phrase]
+SUB TEXT: [supporting 3-6 word phrase]
+VISUAL CONCEPT: [brief background/visual description]
+EMOTION: [emotion to evoke]
+---
+Make them dramatic, intriguing, click-worthy. Bible aesthetic.`,
+
+        description: `You are a YouTube SEO expert for a Bible storytelling channel.
+Write a full YouTube video description AND tags for a video about: ${character}.
+Include:
+1. Compelling 3-paragraph description (dramatic, devotional, educational tone mix)
+2. Call to action
+3. 25 relevant hashtags and keywords
+Format with sections: DESCRIPTION and TAGS`,
+
+        script: `You are a scriptwriter for a popular faceless YouTube Bible channel (dramatic, educational, devotional style).
+Write a full 5-7 minute video script about: ${character}.
+Structure:
+[HOOK] - 30 second dramatic opening
+[INTRO] - Brief channel intro
+[BACKGROUND] - Historical/biblical context
+[STORY] - Main narrative (dramatic storytelling)
+[KEY LESSONS] - 3 spiritual/life lessons
+[REFLECTION] - Devotional closing thought
+[OUTRO] - Call to action
+Write for voiceover narration. Vivid language, rhetorical questions, varied pacing.`
+      };
+      return p[section];
+    }
+
+    function App() {
+      const [apiKey, setApiKey] = useState("");
+      const [showKey, setShowKey] = useState(true);
+      const [character, setCharacter] = useState("");
+      const [custom, setCustom] = useState("");
+      const [activeTab, setActiveTab] = useState("titles");
+      const [content, setContent] = useState({});
+      const [loading, setLoading] = useState(false);
+      const [loadingSection, setLoadingSection] = useState(null);
+      const [generated, setGenerated] = useState(false);
+      const [search, setSearch] = useState("");
+      const [copied, setCopied] = useState(false);
+      const [error, setError] = useState("");
+
+      const finalChar = custom.trim() || character;
+      const filtered = CHARACTERS.filter(c => c.toLowerCase().includes(search.toLowerCase()));
+
+      const callAPI = async (section) => {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true"
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 1000,
+            messages: [{ role: "user", content: getPrompt(section, finalChar) }]
+          })
+        });
+        if (!res.ok) { const e = await res.json(); throw new Error(e?.error?.message || "API error"); }
+        const data = await res.json();
+        return data.content?.map(b => b.text || "").join("\n") || "";
+      };
+
+      const generateAll = async () => {
+        if (!finalChar || !apiKey) return;
+        setError(""); setGenerated(true); setContent({});
+        const sections = ["titles","thumbnails","description","script"];
+        for (const s of sections) {
+          setLoadingSection(s); setLoading(true);
+          try {
+            const text = await callAPI(s);
+            setContent(prev => ({ ...prev, [s]: text }));
+            if (s === "titles") setActiveTab("titles");
+          } catch(e) { setError(e.message); setContent(prev => ({ ...prev, [s]: "Error: " + e.message })); }
+        }
+        setLoading(false); setLoadingSection(null);
+      };
+
+      const regenerate = async (section) => {
+        if (!finalChar || !apiKey) return;
+        setError(""); setLoadingSection(section); setLoading(true);
+        try {
+          const text = await callAPI(section);
+          setContent(prev => ({ ...prev, [section]: text }));
+          setActiveTab(section);
+        } catch(e) { setError(e.message); }
+        setLoading(false); setLoadingSection(null);
+      };
+
+      const copy = () => {
+        if (content[activeTab]) {
+          navigator.clipboard.writeText(content[activeTab]);
+          setCopied(true); setTimeout(() => setCopied(false), 2000);
+        }
+      };
+
+      const gold = "#d4af37";
+      const goldFaint = "rgba(212,175,55,0.15)";
+      const goldBorder = "rgba(212,175,55,0.3)";
+
+      return (
+        <div style={{ minHeight:"100vh" }}>
+          {/* HEADER */}
+          <div style={{ borderBottom:`1px solid ${goldBorder}`, padding:"22px 24px", background:"rgba(0,0,0,0.4)", position:"sticky", top:0, zIndex:100, backdropFilter:"blur(10px)" }}>
+            <div style={{ maxWidth:1100, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                <span style={{ fontSize:30 }}>✝️</span>
+                <div>
+                  <div style={{ fontSize:20, fontWeight:700, color:gold, letterSpacing:1, textTransform:"uppercase" }}>Bible Content Bank</div>
+                  <div style={{ fontSize:10, color:"#a08060", letterSpacing:2 }}>AI-POWERED · FACELESS YOUTUBE · BIBLE CHARACTERS</div>
+                </div>
+              </div>
+              <button onClick={() => setShowKey(v => !v)} style={{ padding:"8px 16px", background:goldFaint, border:`1px solid ${goldBorder}`, borderRadius:8, color:gold, cursor:"pointer", fontSize:12, fontFamily:"Georgia,serif" }}>
+                {apiKey ? "🔑 API Key Set ✓" : "🔑 Set API Key"}
+              </button>
+            </div>
+          </div>
+
+          {/* API KEY BAR */}
+          {showKey && (
+            <div style={{ background:"rgba(212,175,55,0.06)", borderBottom:`1px solid ${goldBorder}`, padding:"16px 24px" }}>
+              <div style={{ maxWidth:1100, margin:"0 auto" }}>
+                <div style={{ fontSize:10, color:"#a08060", letterSpacing:2, marginBottom:8 }}>ANTHROPIC API KEY — get yours free at console.anthropic.com</div>
+                <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                  <input type="password" placeholder="sk-ant-..." value={apiKey} onChange={e => setApiKey(e.target.value)}
+                    style={{ flex:1, minWidth:240, background:"rgba(0,0,0,0.5)", border:`1px solid ${goldBorder}`, borderRadius:8, padding:"10px 14px", color:"#e8d5a3", fontSize:14, fontFamily:"monospace", outline:"none" }} />
+                  <button onClick={() => setShowKey(false)} disabled={!apiKey}
+                    style={{ padding:"10px 20px", background: apiKey ? `linear-gradient(135deg,${gold},#b8860b)` : "rgba(100,80,30,0.3)", border:"none", borderRadius:8, color: apiKey ? "#0f0c1d" : "#6a5020", cursor: apiKey ? "pointer" : "not-allowed", fontSize:13, fontWeight:"bold", fontFamily:"Georgia,serif" }}>
+                    Save & Continue
+                  </button>
+                </div>
+                {error && <div style={{ color:"#e57373", fontSize:12, marginTop:8 }}>⚠️ {error}</div>}
+              </div>
+            </div>
+          )}
+
+          {/* MAIN */}
+          <div style={{ maxWidth:1100, margin:"0 auto", padding:"32px 20px", display:"flex", gap:24, flexWrap:"wrap" }}>
+
+            {/* SIDEBAR */}
+            <div style={{ width:260, flexShrink:0 }}>
+              {/* Custom input */}
+              <div style={{ background:goldFaint, border:`1px solid ${goldBorder}`, borderRadius:12, padding:16, marginBottom:14 }}>
+                <div style={{ fontSize:10, color:"#a08060", letterSpacing:2, marginBottom:8, textTransform:"uppercase" }}>Custom Character</div>
+                <input type="text" placeholder="e.g. Bathsheba, Ananias..." value={custom} onChange={e => { setCustom(e.target.value); setCharacter(""); }}
+                  style={{ width:"100%", background:"rgba(0,0,0,0.4)", border:`1px solid ${goldBorder}`, borderRadius:8, padding:"9px 12px", color:"#e8d5a3", fontSize:14, fontFamily:"Georgia,serif", outline:"none", boxSizing:"border-box" }} />
+              </div>
+
+              {/* Character list */}
+              <div style={{ background:goldFaint, border:`1px solid ${goldBorder}`, borderRadius:12, padding:16, marginBottom:14 }}>
+                <div style={{ fontSize:10, color:"#a08060", letterSpacing:2, marginBottom:8, textTransform:"uppercase" }}>Choose a Character</div>
+                <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)}
+                  style={{ width:"100%", background:"rgba(0,0,0,0.4)", border:"1px solid rgba(212,175,55,0.2)", borderRadius:8, padding:"7px 12px", color:"#e8d5a3", fontSize:13, fontFamily:"Georgia,serif", outline:"none", marginBottom:8, boxSizing:"border-box" }} />
+                <div style={{ maxHeight:220, overflowY:"auto", display:"flex", flexDirection:"column", gap:2 }}>
+                  {filtered.map(c => (
+                    <button key={c} onClick={() => { setCharacter(c); setCustom(""); }}
+                      style={{ background: character===c&&!custom ? "rgba(212,175,55,0.2)" : "transparent", border: character===c&&!custom ? `1px solid rgba(212,175,55,0.5)` : "1px solid transparent", borderRadius:6, padding:"7px 12px", color: character===c&&!custom ? gold : "#c0a070", cursor:"pointer", textAlign:"left", fontSize:13, fontFamily:"Georgia,serif" }}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Selected */}
+              {finalChar && (
+                <div style={{ background:"rgba(212,175,55,0.12)", border:`1px solid rgba(212,175,55,0.4)`, borderRadius:10, padding:"12px 16px", marginBottom:12, textAlign:"center" }}>
+                  <div style={{ fontSize:10, color:"#a08060", letterSpacing:2, marginBottom:4 }}>SELECTED</div>
+                  <div style={{ fontSize:18, color:gold, fontWeight:"bold" }}>{finalChar}</div>
+                </div>
+              )}
+
+              {!apiKey && (
+                <div style={{ background:"rgba(229,115,115,0.1)", border:"1px solid rgba(229,115,115,0.3)", borderRadius:8, padding:"10px 14px", marginBottom:12, fontSize:12, color:"#e57373", textAlign:"center" }}>
+                  ⚠️ Set your API key above first
+                </div>
+              )}
+
+              <button onClick={generateAll} disabled={!finalChar || !apiKey || loading}
+                style={{ width:"100%", padding:13, background: finalChar&&apiKey&&!loading ? `linear-gradient(135deg,${gold},#b8860b)` : "rgba(100,80,30,0.3)", border:"none", borderRadius:10, color: finalChar&&apiKey&&!loading ? "#0f0c1d" : "#6a5020", fontSize:15, fontWeight:"bold", fontFamily:"Georgia,serif", cursor: finalChar&&apiKey&&!loading ? "pointer" : "not-allowed", letterSpacing:1 }}>
+                {loading ? "✨ Generating..." : "⚡ Generate Full Bank"}
+              </button>
+            </div>
+
+            {/* CONTENT AREA */}
+            <div style={{ flex:1, minWidth:280 }}>
+              {!generated ? (
+                <div style={{ textAlign:"center", padding:"80px 32px", border:"1px dashed rgba(212,175,55,0.2)", borderRadius:16 }}>
+                  <div style={{ fontSize:56, marginBottom:16 }}>📖</div>
+                  <div style={{ color:"#a08060", fontSize:20, marginBottom:10 }}>Your Content Bank Awaits</div>
+                  <div style={{ fontSize:14, lineHeight:1.8, color:"#6a5030", maxWidth:320, margin:"0 auto" }}>
+                    {!apiKey ? "Start by setting your Anthropic API key using the button in the top right." : "Select a Bible character and click Generate Full Bank."}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Tabs */}
+                  <div style={{ display:"flex", gap:8, marginBottom:18, flexWrap:"wrap" }}>
+                    {["titles","thumbnails","description","script"].map(s => (
+                      <button key={s} onClick={() => setActiveTab(s)}
+                        style={{ padding:"8px 14px", background: activeTab===s ? "rgba(212,175,55,0.2)" : "rgba(255,255,255,0.04)", border: activeTab===s ? `1px solid rgba(212,175,55,0.6)` : "1px solid rgba(255,255,255,0.08)", borderRadius:8, color: activeTab===s ? gold : "#8a7050", cursor:"pointer", fontSize:13, fontFamily:"Georgia,serif", display:"flex", alignItems:"center", gap:6 }}>
+                        {ICONS[s]} {LABELS[s]}
+                        {loadingSection===s && <span className="dot" />}
+                        {content[s] && loadingSection!==s && <span style={{ color:"#4caf50", fontSize:10 }}>✓</span>}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Content box */}
+                  <div style={{ background:"rgba(0,0,0,0.35)", border:`1px solid ${goldBorder}`, borderRadius:14, padding:24, minHeight:420 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:8 }}>
+                      <div style={{ fontSize:16, color:gold, display:"flex", alignItems:"center", gap:8 }}>
+                        {ICONS[activeTab]} {LABELS[activeTab]}
+                        {finalChar && <span style={{ color:"#8a6a30", fontSize:13 }}>— {finalChar}</span>}
+                      </div>
+                      <div style={{ display:"flex", gap:8 }}>
+                        <button onClick={() => regenerate(activeTab)} disabled={loading}
+                          style={{ padding:"6px 12px", background:goldFaint, border:`1px solid ${goldBorder}`, borderRadius:6, color:gold, cursor:"pointer", fontSize:12, fontFamily:"Georgia,serif" }}>
+                          🔄 Regenerate
+                        </button>
+                        <button onClick={copy} disabled={!content[activeTab]}
+                          style={{ padding:"6px 12px", background: copied ? "rgba(76,175,80,0.2)" : goldFaint, border:`1px solid ${copied ? "rgba(76,175,80,0.5)" : goldBorder}`, borderRadius:6, color: copied ? "#4caf50" : gold, cursor:"pointer", fontSize:12, fontFamily:"Georgia,serif" }}>
+                          {copied ? "✓ Copied!" : "📋 Copy"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {loadingSection===activeTab ? (
+                      <div style={{ textAlign:"center", padding:"60px 20px", color:"#8a7050" }}>
+                        <div style={{ fontSize:36, marginBottom:12 }}>✨</div>
+                        <div>Generating {LABELS[activeTab]}...</div>
+                      </div>
+                    ) : content[activeTab] ? (
+                      <pre style={{ whiteSpace:"pre-wrap", wordBreak:"break-word", fontSize:14, lineHeight:1.85, color:"#d4c090", fontFamily:"Georgia,serif", margin:0, maxHeight:500, overflowY:"auto" }}>
+                        {content[activeTab]}
+                      </pre>
+                    ) : (
+                      <div style={{ textAlign:"center", padding:"60px 20px", color:"#5a4020", fontSize:14 }}>
+                        Content will appear here once generated.
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
